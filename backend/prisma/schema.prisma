@@ -2,11 +2,202 @@ generator client {
   provider = "prisma-client-js"
 }
 
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-model Test {
-  id String @id @default(uuid())
+enum Role {
+  ADMIN
+  DOCTOR
+  PATIENT
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  CHECKED_IN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum AppointmentType {
+  ONLINE
+  OFFLINE
+}
+
+enum DoctorVerificationStatus {
+  PENDING_DOCUMENTS
+  PENDING_VERIFICATION
+  VERIFIED
+  REJECTED
+}
+
+//  Users 
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  role         Role
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  doctor       Doctor?
+  patient      Patient?
+
+  @@index([email])
+}
+
+//  Doctor
+model Doctor {
+  id                 String                   @id @default(cuid())
+  userId             String                   @unique
+  user               User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name               String
+  specialty          String
+  bio                String?
+  avatarUrl          String?
+  consultationFee    Int?                      
+  verificationStatus DoctorVerificationStatus @default(PENDING_DOCUMENTS)
+
+  
+  licenseDocUrl      String?
+  degreeDocUrl       String?
+
+  availability       Availability[]
+  appointments       Appointment[]
+  ratings            Rating[]
+
+  createdAt          DateTime @default(now())
+
+  @@index([specialty])
+  @@index([verificationStatus])
+}
+
+//  Patient 
+model Patient {
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name                String
+  dateOfBirth         DateTime?
+  allergies           String[]
+  currentMedications  String[]
+  bloodGroup          String?
+  emergencyContact    String?
+
+  appointments        Appointment[]
+  ehrDocuments        EhrDocument[]
+
+  createdAt           DateTime @default(now())
+}
+
+//  Availability 
+model Availability {
+  id          String   @id @default(cuid())
+  doctorId    String
+  doctor      Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  dayOfWeek   Int      
+  startTime   String   
+  endTime     String   
+  slotMinutes Int      @default(30)
+
+  @@index([doctorId, dayOfWeek])
+}
+
+//  Appointment 
+model Appointment {
+  id              String            @id @default(cuid())
+  doctorId        String
+  doctor          Doctor            @relation(fields: [doctorId], references: [id])
+  patientId       String
+  patient         Patient           @relation(fields: [patientId], references: [id])
+
+  scheduledAt     DateTime
+  durationMinutes Int               @default(30)
+  type            AppointmentType
+  status          AppointmentStatus @default(SCHEDULED)
+
+  queueNumber     Int?
+  videoLink       String?
+  notes           String?
+
+  chatRoom        ChatRoom?
+  payment         Payment?
+
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@unique([doctorId, scheduledAt])  
+  @@index([doctorId, scheduledAt])
+  @@index([patientId, scheduledAt])
+  @@index([status])
+}
+
+// CHat
+model ChatRoom {
+  id            String    @id @default(cuid())
+  appointmentId String    @unique
+  appointment   Appointment @relation(fields: [appointmentId], references: [id])
+  closesAt      DateTime
+  messages      ChatMessage[]
+  createdAt     DateTime  @default(now())
+}
+
+model ChatMessage {
+  id         String   @id @default(cuid())
+  roomId     String
+  room       ChatRoom @relation(fields: [roomId], references: [id])
+  senderRole Role
+  senderId   String
+  content    String
+  createdAt  DateTime @default(now())
+
+  @@index([roomId, createdAt])
+}
+
+//  EHR Documents 
+model EhrDocument {
+  id          String   @id @default(cuid())
+  patientId   String
+  patient     Patient  @relation(fields: [patientId], references: [id])
+  fileUrl     String
+  fileName    String
+  mimeType    String
+  uploadedAt  DateTime @default(now())
+
+  @@index([patientId])
+}
+
+//  Ratings 
+model Rating {
+  id           String   @id @default(cuid())
+  doctorId     String
+  doctor       Doctor   @relation(fields: [doctorId], references: [id])
+  patientId    String
+  appointmentId String  @unique  
+  score        Int      
+  comment      String?
+  createdAt    DateTime @default(now())
+
+  @@index([doctorId])
+}
+
+//  Payment
+model Payment {
+  id            String   @id @default(cuid())
+  appointmentId String   @unique
+  appointment   Appointment @relation(fields: [appointmentId], references: [id])
+  amount        Int
+  currency      String   @default("INR")
+  provider      String  
+  providerOrderId String?
+  providerPaymentId String?
+  status        String   @default("pending")
+  createdAt     DateTime @default(now())
 }

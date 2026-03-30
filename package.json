@@ -1,6 +1,22 @@
 {
+  "name": "healthcare-platform",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "backend"
+  ],
+  "scripts": {
+    "build:schemas": "npm run build --workspace=packages/schemas",
+    "dev:backend": "npm run dev --workspace=backend",
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "install:all": "npm install"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
   "dependencies": {
-    "@prisma/client": "^5.22.0",
-    "prisma": "^5.22.0"
+    "redlock": "^5.0.0-beta.2"
   }
 }

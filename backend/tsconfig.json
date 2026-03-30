@@ -1,25 +1,24 @@
 {
   "compilerOptions": {
-    "module": "nodenext",
-    "moduleResolution": "nodenext",
-    "resolvePackageJsonExports": true,
-    "esModuleInterop": true,
-    "isolatedModules": true,
-    "declaration": true,
-    "removeComments": true,
-    "emitDecoratorMetadata": true,
-    "experimentalDecorators": true,
-    "allowSyntheticDefaultImports": true,
-    "target": "ES2023",
+    "module": "commonjs",
+    "target": "ES2021",
+    "moduleResolution": "node",
+    "outDir": "./dist",          
+    "rootDirs": ["./src", "../packages/schemas/src"],           
     "sourceMap": true,
-    "outDir": "./dist",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "esModuleInterop": true,          
+    "allowSyntheticDefaultImports": true, 
+    "skipLibCheck": true,              
     "baseUrl": "./",
-    "incremental": true,
-    "skipLibCheck": true,
-    "strictNullChecks": true,
-    "forceConsistentCasingInFileNames": true,
-    "noImplicitAny": false,
-    "strictBindCallApply": false,
-    "noFallthroughCasesInSwitch": false
+    "paths": {
+      "@health/schemas": ["../packages/schemas/src/index.ts"],
+      "@health/schemas/*": ["../packages/schemas/src/*"]
+    }
   }
 }
+
+
+  
+   
