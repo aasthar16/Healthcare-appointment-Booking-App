@@ -2,7 +2,8 @@ node_modules/
 .env
 .env.local
 dist/
-
+backend/uploads/
+backend/node_modules/
 backend/dist/
 backend/src/**/*.js
 backend/src/**/*.js.map
