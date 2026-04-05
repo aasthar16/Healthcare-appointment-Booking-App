@@ -3,22 +3,19 @@
     "module": "commonjs",
     "target": "ES2021",
     "moduleResolution": "node",
-    "outDir": "./dist",          
-    "rootDirs": ["./src", "../packages/schemas/src"],           
+    "outDir": "./dist",
     "sourceMap": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
-    "esModuleInterop": true,          
-    "allowSyntheticDefaultImports": true, 
-    "skipLibCheck": true,              
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "skipLibCheck": true,
+    "strict": false,
     "baseUrl": "./",
     "paths": {
-      "@health/schemas": ["../packages/schemas/src/index.ts"],
-      "@health/schemas/*": ["../packages/schemas/src/*"]
+      "@prisma/client": ["../node_modules/@prisma/client"]
     }
-  }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
 }
-
-
-  
-   

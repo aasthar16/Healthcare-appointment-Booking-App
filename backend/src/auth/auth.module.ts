@@ -19,4 +19,10 @@ import { PrismaModule } from '../../prisma/prisma.module';
   providers: [AuthService, JwtStrategy],
   exports: [JwtModule, PassportModule],
 })
-export class AuthModule {}
+export class AuthModule {
+  constructor() {
+    if (!process.env.JWT_SECRET) {
+      console.warn('⚠️  JWT_SECRET is not set! Using fallback secret. This is insecure for production!');
+    }
+  }
+}

@@ -1,8 +1,6 @@
-import { PartialType } from '@nestjs/mapped-types';
+import { z } from 'zod';
+import { CreateDoctorProfileSchema } from './create-doctor.dto';
 
-export class CreateDoctorDto {
-  name: string;
-  specialty: string;
-}
+export const UpdateDoctorProfileSchema = CreateDoctorProfileSchema.partial();
 
-export class UpdateDoctorDto extends PartialType(CreateDoctorDto) {}
+export type UpdateDoctorProfileDto = z.infer<typeof UpdateDoctorProfileSchema>;

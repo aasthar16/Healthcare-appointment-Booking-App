@@ -1,34 +1,29 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Param, UseGuards, Req, Body } from '@nestjs/common';
 import { QueueService } from './queue.service';
-import { CreateQueueDto } from './dto/create-queue.dto';
-import { UpdateQueueDto } from './dto/update-queue.dto';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
+import { Role } from '@prisma/client';
 
 @Controller('queue')
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class QueueController {
   constructor(private readonly queueService: QueueService) {}
 
-  @Post()
-  create(@Body() createQueueDto: CreateQueueDto) {
-    return this.queueService.create(createQueueDto);
+  @Get('doctor/:doctorId')
+  async getDoctorQueue(@Param('doctorId') doctorId: string) {
+    return this.queueService.getDoctorQueue(doctorId);
   }
 
-  @Get()
-  findAll() {
-    return this.queueService.findAll();
+  @Post('appointment/:appointmentId')
+  @Roles(Role.PATIENT)
+  async joinQueue(@Param('appointmentId') appointmentId: string, @Req() req: any) {
+    return this.queueService.joinQueue(appointmentId, req.user.sub);
   }
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.queueService.findOne(+id);
-  }
-
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateQueueDto: UpdateQueueDto) {
-    return this.queueService.update(+id, updateQueueDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.queueService.remove(+id);
+  @Patch(':queueId/status')
+  @Roles(Role.DOCTOR)
+  async updateStatus(@Param('queueId') queueId: string, @Body('status') status: string) {
+    return this.queueService.updateStatus(queueId, status);
   }
 }

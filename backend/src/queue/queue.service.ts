@@ -1,26 +1,52 @@
 import { Injectable } from '@nestjs/common';
-import { CreateQueueDto } from './dto/create-queue.dto';
-import { UpdateQueueDto } from './dto/update-queue.dto';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class QueueService {
-  create(createQueueDto: CreateQueueDto) {
-    return 'This action adds a new queue';
+  constructor(private readonly prisma: PrismaService) {}
+
+  async getDoctorQueue(doctorId: string) {
+    return this.prisma.appointment.findMany({
+      where: {
+        doctorId: doctorId,
+        status: { in: ['SCHEDULED', 'CHECKED_IN', 'IN_PROGRESS'] }
+      },
+      include: {
+        patient: { select: { name: true } }
+      },
+      orderBy: { queueNumber: 'asc' }
+    });
   }
 
-  findAll() {
-    return `This action returns all queue`;
+  async joinQueue(appointmentId: string, userId: string) {
+    const appointment = await this.prisma.appointment.findUnique({
+      where: { id: appointmentId },
+      include: { patient: true }
+    });
+
+    if (!appointment) {
+      throw new Error('Appointment not found');
+    }
+
+    if (appointment.patient.userId !== userId) {
+      throw new Error('Not your appointment');
+    }
+
+    return this.prisma.appointment.update({
+      where: { id: appointmentId },
+      data: { status: 'CHECKED_IN' }
+    });
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} queue`;
-  }
-
-  update(id: number, updateQueueDto: UpdateQueueDto) {
-    return `This action updates a #${id} queue`;
-  }
-
-  remove(id: number) {
-    return `This action removes a #${id} queue`;
+  async updateStatus(appointmentId: string, status: string) {
+    const validStatuses = ['SCHEDULED', 'CHECKED_IN', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'];
+    if (!validStatuses.includes(status)) {
+      throw new Error('Invalid status');
+    }
+    
+    return this.prisma.appointment.update({
+      where: { id: appointmentId },
+      data: { status: status as any }
+    });
   }
 }

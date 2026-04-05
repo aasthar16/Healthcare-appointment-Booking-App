@@ -1,11 +1,10 @@
-generator client {
-  provider = "prisma-client-js"
-}
-
-
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
 }
 
 enum Role {
@@ -14,6 +13,9 @@ enum Role {
   PATIENT
 }
 
+
+
+
 enum AppointmentStatus {
   SCHEDULED
   CHECKED_IN
@@ -21,6 +23,10 @@ enum AppointmentStatus {
   COMPLETED
   CANCELLED
   NO_SHOW
+  PENDING
+  COUNTER_OFFER
+  REJECTED
+  RESCHEDULE_REQUIRED  // Add this line
 }
 
 enum AppointmentType {
@@ -35,7 +41,7 @@ enum DoctorVerificationStatus {
   REJECTED
 }
 
-//  Users 
+// Users 
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -43,6 +49,7 @@ model User {
   role         Role
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  notifications Notification[] 
 
   doctor       Doctor?
   patient      Patient?
@@ -50,7 +57,7 @@ model User {
   @@index([email])
 }
 
-//  Doctor
+// Doctor
 model Doctor {
   id                 String                   @id @default(cuid())
   userId             String                   @unique
@@ -63,21 +70,20 @@ model Doctor {
   consultationFee    Int?                      
   verificationStatus DoctorVerificationStatus @default(PENDING_DOCUMENTS)
 
-  
   licenseDocUrl      String?
   degreeDocUrl       String?
 
-  availability       Availability[]
+  
   appointments       Appointment[]
   ratings            Rating[]
-
+  doctorAvailability DoctorAvailability[]
   createdAt          DateTime @default(now())
 
   @@index([specialty])
   @@index([verificationStatus])
 }
 
-//  Patient 
+// Patient 
 model Patient {
   id                  String   @id @default(cuid())
   userId              String   @unique
@@ -96,21 +102,9 @@ model Patient {
   createdAt           DateTime @default(now())
 }
 
-//  Availability 
-model Availability {
-  id          String   @id @default(cuid())
-  doctorId    String
-  doctor      Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
 
-  dayOfWeek   Int      
-  startTime   String   
-  endTime     String   
-  slotMinutes Int      @default(30)
 
-  @@index([doctorId, dayOfWeek])
-}
-
-//  Appointment 
+// Appointment 
 model Appointment {
   id              String            @id @default(cuid())
   doctorId        String
@@ -121,7 +115,12 @@ model Appointment {
   scheduledAt     DateTime
   durationMinutes Int               @default(30)
   type            AppointmentType
-  status          AppointmentStatus @default(SCHEDULED)
+  status          AppointmentStatus @default(PENDING)
+
+  // New fields for counter offer
+  originalScheduledAt DateTime?
+  proposedAt         DateTime?
+  counterOfferAt     DateTime?
 
   queueNumber     Int?
   videoLink       String?
@@ -133,20 +132,20 @@ model Appointment {
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
 
-  @@unique([doctorId, scheduledAt])  
+  @@unique([doctorId, scheduledAt])
   @@index([doctorId, scheduledAt])
   @@index([patientId, scheduledAt])
   @@index([status])
 }
 
-// CHat
+// Chat
 model ChatRoom {
-  id            String    @id @default(cuid())
-  appointmentId String    @unique
+  id            String      @id @default(cuid())
+  appointmentId String      @unique
   appointment   Appointment @relation(fields: [appointmentId], references: [id])
   closesAt      DateTime
   messages      ChatMessage[]
-  createdAt     DateTime  @default(now())
+  createdAt     DateTime    @default(now())
 }
 
 model ChatMessage {
@@ -155,13 +154,14 @@ model ChatMessage {
   room       ChatRoom @relation(fields: [roomId], references: [id])
   senderRole Role
   senderId   String
+  fileUrl    String?
   content    String
   createdAt  DateTime @default(now())
 
   @@index([roomId, createdAt])
 }
 
-//  EHR Documents 
+// EHR Documents 
 model EhrDocument {
   id          String   @id @default(cuid())
   patientId   String
@@ -174,30 +174,80 @@ model EhrDocument {
   @@index([patientId])
 }
 
-//  Ratings 
+// Ratings 
 model Rating {
-  id           String   @id @default(cuid())
-  doctorId     String
-  doctor       Doctor   @relation(fields: [doctorId], references: [id])
-  patientId    String
-  appointmentId String  @unique  
-  score        Int      
-  comment      String?
-  createdAt    DateTime @default(now())
+  id            String   @id @default(cuid())
+  doctorId      String
+  doctor        Doctor   @relation(fields: [doctorId], references: [id])
+  patientId     String
+  appointmentId String   @unique
+  score         Int      
+  comment       String?
+  createdAt     DateTime @default(now())
 
   @@index([doctorId])
 }
 
-//  Payment
+// Payment
 model Payment {
-  id            String   @id @default(cuid())
-  appointmentId String   @unique
-  appointment   Appointment @relation(fields: [appointmentId], references: [id])
-  amount        Int
-  currency      String   @default("INR")
-  provider      String  
+  id              String        @id @default(cuid())
+  appointmentId   String        @unique
+  appointment     Appointment   @relation(fields: [appointmentId], references: [id])
+  orderId         String?       @unique
+  paymentId       String?
+  amount          Int
+  currency        String        @default("INR")
+  provider        String  
   providerOrderId String?
   providerPaymentId String?
-  status        String   @default("pending")
-  createdAt     DateTime @default(now())
+  status          String        @default("pending")
+  createdAt       DateTime      @default(now())
+}
+
+
+// Add after Payment model
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      NotificationType
+  isRead    Boolean  @default(false)
+  metadata  Json?    // For additional data like appointmentId, doctorId, etc.
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([userId, isRead])
+  @@index([createdAt])
+}
+
+// Doctor Availability Slots
+model DoctorAvailability {
+  id          String   @id @default(cuid())
+  doctorId    String
+  doctor      Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  date        DateTime // Specific date (YYYY-MM-DD)
+  startTime   String   // Format: "09:00"
+  endTime     String   // Format: "09:30"
+  isAvailable Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([doctorId, date, startTime])
+  @@index([doctorId, date])
+  @@index([doctorId, isAvailable])
+}
+enum NotificationType {
+  APPOINTMENT_CONFIRMED
+  APPOINTMENT_CANCELLED
+  APPOINTMENT_REMINDER
+  APPOINTMENT_RESCHEDULED
+  MESSAGE_RECEIVED
+  RATING_REQUEST
+  PAYMENT_RECEIVED
+  PAYMENT_FAILED
+  DOCTOR_RESPONSE
+  SYSTEM_ALERT
 }

@@ -1,22 +1,31 @@
 {
-  "name": "healthcare-platform",
+  "name": "healthcare-system",
   "version": "1.0.0",
+  "description": "Production-grade Healthcare Booking System",
   "private": true,
+  "author": "Aastha",
   "workspaces": [
-    "packages/*",
-    "backend"
+    "frontend",
+    "backend",
+    "packages/*"
   ],
   "scripts": {
-    "build:schemas": "npm run build --workspace=packages/schemas",
-    "dev:backend": "npm run dev --workspace=backend",
-    "dev:frontend": "npm run dev --workspace=frontend",
-    "install:all": "npm install"
+    "dev": "npm run dev --workspaces",
+    "build": "npm run build --workspaces",
+    "start": "npm run start --workspaces",
+    "start:dev": "nest start --watch",
+    "frontend": "npm run dev --workspace=frontend",
+    "backend": "npm run start:dev --workspace=backend",
+    "build:schemas": "npm run build --workspace=@health/schemas",
+    "clean": "rm -rf node_modules frontend/node_modules backend/node_modules frontend/.next"
   },
-  "engines": {
-    "node": ">=20.0.0",
-    "npm": ">=10.0.0"
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/multer": "^2.1.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.9.3"
   },
   "dependencies": {
-    "redlock": "^5.0.0-beta.2"
+    "multer": "^2.1.1"
   }
 }

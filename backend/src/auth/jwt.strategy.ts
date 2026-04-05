@@ -14,16 +14,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(private readonly prisma: PrismaService) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-      secretOrKey: process.env.JWT_SECRET,
+      secretOrKey: process.env.JWT_SECRET || 'your-secret-key',  // ✅ Add fallback
       ignoreExpiration: false,
     });
   }
 
   async validate(payload: JwtPayload) {
-    // const user = await this.prisma.user.findUnique({
-    // //   where: { id: payload.sub },
-    // // });
-    // if (!user) throw new UnauthorizedException('Token invalid or user not found.');
     return { sub: payload.sub, email: payload.email, role: payload.role };
   }
 }
