@@ -5,6 +5,9 @@ import { ValidationPipe } from '@nestjs/common';
 import * as bodyParser from 'body-parser';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
+import { config } from 'dotenv';
+
+config(); // Load environment variables from .env file
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);

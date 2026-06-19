@@ -38,7 +38,8 @@ import { AvailabilityModule } from './availability/availability.module';
     EmailModule,
     NotificationModule,
     PaymentModule,
-    AvailabilityModule
+    AvailabilityModule,
+    PatientsModule
   ],
   providers: [
     AppService,

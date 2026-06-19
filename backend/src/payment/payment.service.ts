@@ -101,6 +101,13 @@ export class PaymentService {
     };
   }
 
+  async markAppointmentAsPaid(appointmentId: string) {
+  return this.prisma.appointment.update({
+    where: { id: appointmentId },
+    data: { isPaid: true },
+  });
+}
+
   async verifyPayment(patientUserId: string, dto: VerifyPaymentDto) {
     const { orderId, paymentId, signature, appointmentId } = dto;
 
@@ -166,7 +173,7 @@ export class PaymentService {
         metadata: { appointmentId, amount: payment.amount / 100 },
       });
     }
-
+    await this.markAppointmentAsPaid(appointmentId);
     return { success: true, payment };
   }
 

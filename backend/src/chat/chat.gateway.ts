@@ -10,6 +10,7 @@ import {
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationService } from '../notification/notification.service';
 
 const CHAT_TIME_RESTRICTION_ENABLED = false;
 
@@ -29,6 +30,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
     private readonly jwtService: JwtService,
     private readonly prisma: PrismaService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async handleConnection(client: Socket) {
@@ -55,64 +57,138 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('join-chat')
-  async handleJoinChat(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() data: { appointmentId: string },
-  ) {
-    const { appointmentId } = data;
-    const userId = client.data.userId;
-    const userRole = client.data.role;
+async handleJoinChat(
+  @ConnectedSocket() client: Socket,
+  @MessageBody() data: { appointmentId: string },
+) {
+  const { appointmentId } = data;
+  const userId = client.data.userId;
+  const userRole = client.data.role;
 
-    console.log(`��� User ${userId} joining chat for appointment ${appointmentId}`);
+  console.log(`👤 User ${userId} joining chat for appointment ${appointmentId}`);
 
-    const appointment = await this.prisma.appointment.findUnique({
-      where: { id: appointmentId },
-      include: { doctor: true, patient: true },
-    });
+  const appointment = await this.prisma.appointment.findUnique({
+    where: { id: appointmentId },
+    include: { 
+      doctor: true, 
+      patient: true,
+      payment: true,
+    },
+  });
 
-    if (!appointment) {
-      client.emit('error', { message: 'Appointment not found' });
-      return;
+  if (!appointment) {
+    client.emit('error', { message: 'Appointment not found' });
+    return;
+  }
+
+  const hasAccess =
+    (userRole === 'DOCTOR' && appointment.doctor.userId === userId) ||
+    (userRole === 'PATIENT' && appointment.patient.userId === userId);
+
+  if (!hasAccess) {
+    client.emit('error', { message: 'Not authorized' });
+    return;
+  }
+
+  const now = new Date();
+  const scheduledAt = new Date(appointment.scheduledAt);
+  
+  // ✅ Time window: 2 hours before to 48 hours after
+  const chatOpensAt = new Date(scheduledAt);
+  chatOpensAt.setHours(chatOpensAt.getHours() - 2);
+  
+  const chatClosesAt = new Date(scheduledAt);
+  chatClosesAt.setHours(chatClosesAt.getHours() + 48);
+
+  // ✅ Check time window
+  const isWithinTimeWindow = now >= chatOpensAt && now <= chatClosesAt;
+  const isAfterChatClose = now > chatClosesAt;
+
+  // ✅ Check payment status for ONLINE appointments
+  const isOnline = appointment.type === 'ONLINE';
+  const isPaid = appointment.isPaid || appointment.payment?.status === 'captured';
+  
+  // ✅ Chat active = within time window AND (not online OR paid)
+  const canChat = isWithinTimeWindow && (!isOnline || isPaid);
+  
+  // ✅ Can view history = always true after appointment is created
+  const canViewHistory = true;
+
+  let chatStatusMessage = '';
+  let chatStatusType: 'active' | 'not_started' | 'closed' | 'payment_required' = 'active';
+
+  if (!isWithinTimeWindow) {
+    if (now < chatOpensAt) {
+      chatStatusMessage = `Chat will open on ${chatOpensAt.toLocaleString()}`;
+      chatStatusType = 'not_started';
+    } else if (isAfterChatClose) {
+      chatStatusMessage = 'This chat has been closed. You can view the history below.';
+      chatStatusType = 'closed';
     }
+  } else if (isOnline && !isPaid) {
+    chatStatusMessage = 'Please complete payment to send messages in this chat.';
+    chatStatusType = 'payment_required';
+  } else {
+    chatStatusMessage = 'Chat is active. You can send messages.';
+    chatStatusType = 'active';
+  }
 
-    const hasAccess =
-      (userRole === 'DOCTOR' && appointment.doctor.userId === userId) ||
-      (userRole === 'PATIENT' && appointment.patient.userId === userId);
+  console.log(`📊 Chat status: canChat=${canChat}, canViewHistory=${canViewHistory}, type=${chatStatusType}`);
 
-    if (!hasAccess) {
-      client.emit('error', { message: 'Not authorized' });
-      return;
-    }
+  // ✅ Get chat room and messages (always fetch for history)
+  let chatRoom = await this.prisma.chatRoom.findUnique({
+    where: { appointmentId },
+    include: {
+      messages: {
+        orderBy: { createdAt: 'asc' },
+        take: 200,
+      },
+    },
+  });
 
-    client.join(`chat:${appointmentId}`);
-    client.data.appointmentId = appointmentId;
-
-    console.log(`✅ User ${userId} joined chat room chat:${appointmentId}`);
-
-    client.emit('chat-status', {
-      canChat: true,
-      message: 'Chat active',
-      chatOpensAt: new Date(),
-      chatClosesAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    });
-
-    const chatRoom = await this.prisma.chatRoom.findUnique({
-      where: { appointmentId },
+  // If no chat room exists yet, create one for history tracking
+  if (!chatRoom) {
+    chatRoom = await this.prisma.chatRoom.create({
+      data: {
+        appointmentId,
+        closesAt: chatClosesAt,
+      },
       include: {
         messages: {
           orderBy: { createdAt: 'asc' },
-          take: 100,
+          take: 200,
         },
       },
     });
-
-    if (chatRoom) {
-      client.emit('previous-messages', chatRoom.messages);
-    } else {
-      client.emit('previous-messages', []);
-    }
   }
 
+  // ✅ Join the room only if canChat is true
+  if (canChat) {
+    client.join(`chat:${appointmentId}`);
+    client.data.appointmentId = appointmentId;
+    console.log(`✅ User ${userId} joined chat room chat:${appointmentId}`);
+  } else {
+    console.log(`⛔ User ${userId} cannot join chat (inactive), but can view history`);
+  }
+
+  // ✅ Send chat status with history visibility
+  client.emit('chat-status', {
+    canChat,
+    canViewHistory,
+    message: chatStatusMessage,
+    statusType: chatStatusType,
+    chatOpensAt,
+    chatClosesAt,
+    requiresPayment: isOnline && !isPaid,
+    isPaid,
+    isOnline,
+    isWithinTimeWindow,
+    isAfterChatClose,
+  });
+
+  // ✅ Always send previous messages (for history)
+  client.emit('previous-messages', chatRoom.messages || []);
+}
   @SubscribeMessage('send-message')
   async handleSendMessage(
     @ConnectedSocket() client: Socket,
@@ -122,7 +198,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const userId = client.data.userId;
     const userRole = client.data.role;
 
-    console.log(`��� New message from ${userRole} in ${appointmentId}, fileUrl: ${fileUrl}`);
+    console.log(`��� New message from ${userRole} in ${appointmentId}, fileUrl: ${fileUrl}`);
 
     const appointment = await this.prisma.appointment.findUnique({
       where: { id: appointmentId },
@@ -187,9 +263,43 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       fileName: fileName,
     };
 
-    console.log(`��� Broadcasting message with fileUrl: ${messageToSend.fileUrl}`);
-
     this.server.to(`chat:${appointmentId}`).emit('new-message', messageToSend);
+
+   try {
+      const senderName = userRole === 'DOCTOR' 
+        ? `Dr. ${appointment.doctor.name}` 
+        : appointment.patient.name;
+      
+      const recipientUserId = userRole === 'DOCTOR' 
+        ? appointment.patient.userId 
+        : appointment.doctor.userId;
+
+      const recipientRole = userRole === 'DOCTOR' ? 'PATIENT' : 'DOCTOR';
+
+      // ✅ Create notification for the recipient
+      await this.notificationService.create({
+        userId: recipientUserId,
+        title: `New message from ${senderName}`,
+        message: content?.trim()?.substring(0, 100) || 'New message received',
+        type: 'MESSAGE_RECEIVED',
+        metadata: {
+          appointmentId: appointment.id,
+          senderId: userId,
+          senderRole: userRole,
+          messageId: message.id,
+          senderName: senderName,
+        },
+      });
+
+      console.log(`✅ Notification sent to ${recipientRole} (${recipientUserId})`);
+
+      // ✅ Also notify if the recipient is online (for real-time badge update)
+      // You can emit a socket event to the recipient if they're connected
+      // This will be handled by the frontend polling for notifications
+
+    } catch (error) {
+      console.error('❌ Failed to send notification:', error);
+    }
   }
 
   @SubscribeMessage('typing')

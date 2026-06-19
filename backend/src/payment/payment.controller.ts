@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Param, UseGuards, Request } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, UseGuards, Request, NotFoundException } from '@nestjs/common';
 import { PaymentService } from './payment.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -34,5 +34,11 @@ export class PaymentController {
   @Roles(Role.PATIENT, Role.DOCTOR)
   async getPaymentStatus(@Param('appointmentId') appointmentId: string, @Request() req: any) {
     return this.paymentService.getPaymentStatus(appointmentId, req.user.sub);
+  }
+
+  @Get('history')
+  @Roles(Role.PATIENT, Role.DOCTOR)
+  async getPaymentHistory(@Request() req: any) {
+    return this.paymentService.getPaymentHistory(req.user.sub, req.user.role);
   }
 }

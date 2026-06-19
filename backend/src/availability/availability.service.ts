@@ -33,36 +33,98 @@ export class AvailabilityService {
     }
     return `${endHour.toString().padStart(2, '0')}:${endMinute.toString().padStart(2, '0')}`;
   }
+async getDoctorAvailability(doctorId: string, date: Date) {
+  const startOfDay = new Date(date);
+  startOfDay.setHours(0, 0, 0, 0);
+  const endOfDay = new Date(date);
+  endOfDay.setHours(23, 59, 59, 999);
 
-  async getDoctorAvailability(doctorId: string, date: Date) {
-    const startOfDay = new Date(date);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(date);
-    endOfDay.setHours(23, 59, 59, 999);
+  // ✅ GET DOCTOR'S DEFAULT CAPACITY
+  const doctor = await this.prisma.doctor.findUnique({
+    where: { id: doctorId },
+    select: { defaultMaxCapacity: true },
+  });
+  const defaultCapacity = doctor?.defaultMaxCapacity || 5;
 
-    const blockedSlots = await this.prisma.doctorAvailability.findMany({
+  // Get existing availability records
+  let existingRecords = await this.prisma.doctorAvailability.findMany({
+    where: {
+      doctorId,
+      date: {
+        gte: startOfDay,
+        lt: endOfDay,
+      },
+    },
+    include: {
+      appointments: {
+        where: {
+          status: {
+            notIn: ['CANCELLED', 'NO_SHOW'],
+          },
+        },
+      },
+    },
+  });
+
+  const allSlots = this.generateTimeSlots();
+  const existingStartTimes = new Set(existingRecords.map(r => r.startTime));
+
+  // ✅ Find missing slots and create them with doctor's capacity
+  const missingSlots = allSlots.filter(slot => !existingStartTimes.has(slot.startTime));
+
+  if (missingSlots.length > 0) {
+    console.log(`📦 Creating ${missingSlots.length} missing slots for doctor ${doctorId} on ${date.toISOString().split('T')[0]}`);
+    
+    await this.prisma.doctorAvailability.createMany({
+      data: missingSlots.map(slot => ({
+        doctorId,
+        date: startOfDay,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+        isAvailable: true,
+        maxCapacity: defaultCapacity, // ✅ USE DOCTOR'S DEFAULT CAPACITY
+      })),
+    });
+
+    existingRecords = await this.prisma.doctorAvailability.findMany({
       where: {
         doctorId,
         date: {
           gte: startOfDay,
           lt: endOfDay,
         },
-        isAvailable: false,
+      },
+      include: {
+        appointments: {
+          where: {
+            status: {
+              notIn: ['CANCELLED', 'NO_SHOW'],
+            },
+          },
+        },
       },
     });
-
-    const allSlots = this.generateTimeSlots();
-    
-    return allSlots.map(slot => {
-      const isBlocked = blockedSlots.some(bs => bs.startTime === slot.startTime);
-      return {
-        startTime: slot.startTime,
-        endTime: slot.endTime,
-        isAvailable: !isBlocked,
-        id: blockedSlots.find(bs => bs.startTime === slot.startTime)?.id,
-      };
-    });
   }
+
+  // ✅ Map and return all slots
+  return allSlots.map(slot => {
+    const record = existingRecords.find(r => r.startTime === slot.startTime);
+    const bookedCount = record?.appointments?.length || 0;
+    const maxCapacity = record?.maxCapacity || defaultCapacity;
+    const isAvailable = record?.isAvailable !== false;
+
+    return {
+      id: record?.id || '',
+      startTime: slot.startTime,
+      endTime: slot.endTime,
+      isAvailable: isAvailable && bookedCount < maxCapacity,
+      bookedCount: bookedCount,
+      maxCapacity: maxCapacity,
+      remainingCapacity: maxCapacity - bookedCount,
+      isFull: bookedCount >= maxCapacity,
+    };
+  });
+}
 
   async getDoctorByUserId(userId: string) {
     const doctor = await this.prisma.doctor.findUnique({
@@ -120,26 +182,30 @@ export class AvailabilityService {
       },
     });
 
-    // Create new blocked slots
-    const created = await this.prisma.doctorAvailability.createMany({
-      data: slots.map(startTime => ({
-        doctorId,
-        date: startOfDay,
-        startTime,
-        endTime: this.getEndTime(startTime),
-        isAvailable: false,
-      })),
-    });
+    const doctor = await this.prisma.doctor.findUnique({
+    where: { id: doctorId },
+    select: { defaultMaxCapacity: true },
+  });
+  const defaultCapacity = doctor?.defaultMaxCapacity || 5;
 
+  // Create new blocked slots with doctor's capacity
+  const created = await this.prisma.doctorAvailability.createMany({
+    data: slots.map(startTime => ({
+      doctorId,
+      date: startOfDay,
+      startTime,
+      endTime: this.getEndTime(startTime),
+      isAvailable: false,
+      maxCapacity: defaultCapacity, // ✅ USE DOCTOR'S CAPACITY
+    })),
+  });
     // Handle affected appointments
     for (const appointment of affectedAppointments) {
-      // Update appointment status
       await this.prisma.appointment.update({
         where: { id: appointment.id },
         data: { status: 'RESCHEDULE_REQUIRED' },
       });
 
-      // Send notification to patient
       await this.notificationService.create({
         userId: appointment.patient.userId,
         title: 'Appointment Reschedule Required',
@@ -148,7 +214,6 @@ export class AvailabilityService {
         metadata: { appointmentId: appointment.id, doctorId, oldDate: appointment.scheduledAt },
       });
 
-      // Send notification to doctor
       await this.notificationService.create({
         userId: appointment.doctor.userId,
         title: 'Appointment Auto-Cancelled',
@@ -174,7 +239,6 @@ export class AvailabilityService {
       throw new BadRequestException('Slot not found');
     }
 
-    // If marking as unavailable (blocking), check for appointments
     if (!isAvailable) {
       const appointment = await this.prisma.appointment.findFirst({
         where: {
@@ -192,13 +256,11 @@ export class AvailabilityService {
       });
 
       if (appointment) {
-        // Update appointment status
         await this.prisma.appointment.update({
           where: { id: appointment.id },
           data: { status: 'RESCHEDULE_REQUIRED' },
         });
 
-        // Send notification
         await this.notificationService.create({
           userId: appointment.patient.userId,
           title: 'Appointment Reschedule Required',

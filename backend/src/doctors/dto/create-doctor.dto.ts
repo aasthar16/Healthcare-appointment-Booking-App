@@ -5,6 +5,7 @@ export const CreateDoctorProfileSchema = z.object({
   specialty: z.string().min(2, 'Specialty must be at least 2 characters'),
   bio: z.string().optional(),
   consultationFee: z.number().min(0).optional(),
+  defaultMaxCapacity: z.number().min(1).max(20).default(5).optional(),
 });
 
 export type CreateDoctorProfileDto = z.infer<typeof CreateDoctorProfileSchema>;

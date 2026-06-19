@@ -17,7 +17,10 @@ export class AvailabilityController {
     @Param('doctorId') doctorId: string,
     @Query('date') date: string,
   ) {
-    return this.availabilityService.getDoctorAvailability(doctorId, new Date(date));
+    console.log('📥 Fetching availability for doctor:', doctorId, 'date:', date);
+    const result = await this.availabilityService.getDoctorAvailability(doctorId, new Date(date));
+    console.log('📦 Slots returned:', result.length);
+    return result;
   }
 
   @Post('unavailable')

@@ -57,7 +57,31 @@ model User {
   @@index([email])
 }
 
-// Doctor
+
+model Patient {
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name                String
+  dateOfBirth         DateTime?
+  bloodGroup          String?
+  emergencyContact    String?
+  emergencyContactName String?   // NEW
+  emergencyContactRelation String? // NEW
+  address             String?    // NEW
+  height              Int?       // NEW (in cm)
+  weight              Int?       // NEW (in kg)
+  allergies           String[]
+  currentMedications  String[]
+
+  appointments        Appointment[]
+  ehrDocuments        EhrDocument[]
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime  @default(now()) @updatedAt  // ADD THIS
+}
+
 model Doctor {
   id                 String                   @id @default(cuid())
   userId             String                   @unique
@@ -67,62 +91,72 @@ model Doctor {
   specialty          String
   bio                String?
   avatarUrl          String?
-  consultationFee    Int?                      
+  consultationFee    Int?     
+  defaultMaxCapacity Int      @default(5)                 
   verificationStatus DoctorVerificationStatus @default(PENDING_DOCUMENTS)
 
   licenseDocUrl      String?
   degreeDocUrl       String?
 
-  
+  experience         Int?
+  education          String[]
+  languages          String[]
+  clinicAddress      String?
+
   appointments       Appointment[]
   ratings            Rating[]
   doctorAvailability DoctorAvailability[]
+  
   createdAt          DateTime @default(now())
+  updatedAt          DateTime @default(now()) @updatedAt
 
   @@index([specialty])
   @@index([verificationStatus])
 }
 
-// Patient 
-model Patient {
-  id                  String   @id @default(cuid())
-  userId              String   @unique
-  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  name                String
-  dateOfBirth         DateTime?
-  allergies           String[]
-  currentMedications  String[]
-  bloodGroup          String?
-  emergencyContact    String?
+model DoctorAvailability {
+  id          String   @id @default(cuid())
+  doctorId    String
+  doctor      Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  date        DateTime
+  startTime   String
+  endTime     String
+  isAvailable Boolean  @default(true)  // ✅ Changed from false to true
+  maxCapacity Int      @default(5)     // ✅ NEW: max patients per slot
+  
+  appointments Appointment[]  // ✅ NEW: relation to appointments
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  appointments        Appointment[]
-  ehrDocuments        EhrDocument[]
-
-  createdAt           DateTime @default(now())
+  @@unique([doctorId, date, startTime])
+  @@index([doctorId, date])
+  @@index([doctorId, isAvailable])
 }
 
-
-
-// Appointment 
 model Appointment {
   id              String            @id @default(cuid())
   doctorId        String
   doctor          Doctor            @relation(fields: [doctorId], references: [id])
   patientId       String
   patient         Patient           @relation(fields: [patientId], references: [id])
+  
+  // ✅ Link to availability slot
+  availabilityId  String?           // ✅ New: reference to DoctorAvailability
+  availability    DoctorAvailability? @relation(fields: [availabilityId], references: [id])
 
   scheduledAt     DateTime
+  isPaid           Boolean               @default(false) 
   durationMinutes Int               @default(30)
   type            AppointmentType
   status          AppointmentStatus @default(PENDING)
 
-  // New fields for counter offer
   originalScheduledAt DateTime?
   proposedAt         DateTime?
   counterOfferAt     DateTime?
 
-  queueNumber     Int?
+  queueNumber     Int?              // ✅ Queue number within this slot
   videoLink       String?
   notes           String?
 
@@ -132,11 +166,16 @@ model Appointment {
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
 
-  @@unique([doctorId, scheduledAt])
+  
   @@index([doctorId, scheduledAt])
   @@index([patientId, scheduledAt])
   @@index([status])
+  @@index([availabilityId])  // ✅ For faster lookups
 }
+
+
+
+
 
 // Chat
 model ChatRoom {
@@ -223,22 +262,7 @@ model Notification {
   @@index([createdAt])
 }
 
-// Doctor Availability Slots
-model DoctorAvailability {
-  id          String   @id @default(cuid())
-  doctorId    String
-  doctor      Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
-  date        DateTime // Specific date (YYYY-MM-DD)
-  startTime   String   // Format: "09:00"
-  endTime     String   // Format: "09:30"
-  isAvailable Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
 
-  @@unique([doctorId, date, startTime])
-  @@index([doctorId, date])
-  @@index([doctorId, isAvailable])
-}
 enum NotificationType {
   APPOINTMENT_CONFIRMED
   APPOINTMENT_CANCELLED
