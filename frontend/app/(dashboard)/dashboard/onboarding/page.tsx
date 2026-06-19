@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -16,12 +16,58 @@ export default function DoctorOnboardingPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [checkingProfile, setCheckingProfile] = useState(true);
   const [formData, setFormData] = useState<FormData>({
     name: session?.user?.name || '',
     specialty: '',
     bio: '',
     consultationFee: '',
   });
+
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+
+  // ✅ Check if doctor profile already exists
+  useEffect(() => {
+    const checkProfile = async () => {
+      if (status !== 'authenticated' || session?.user?.role !== 'DOCTOR') {
+        setCheckingProfile(false);
+        return;
+      }
+
+      try {
+        // ✅ Get token from correct location
+        const token = session?.accessToken || session?.user?.accessToken;
+        
+        if (!token) {
+          console.error('No token found');
+          setCheckingProfile(false);
+          return;
+        }
+
+        const response = await fetch(`${API_BASE}/doctors/user/${session?.user?.id}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+
+        if (response.ok) {
+          // ✅ Profile exists - redirect to documents
+          const data = await response.json();
+          router.push('/dashboard/documents');
+          return;
+        } else if (response.status === 401) {
+          console.error('401 Unauthorized - token may be invalid');
+          // Still show the form, let user try
+        }
+      } catch (error) {
+        console.error('Error checking profile:', error);
+      } finally {
+        setCheckingProfile(false);
+      }
+    };
+
+    checkProfile();
+  }, [session, status, router, API_BASE]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -33,7 +79,9 @@ export default function DoctorOnboardingPage() {
     setLoading(true);
 
     try {
-      const token = session?.accessToken;
+      // ✅ Get token from correct location
+      const token = session?.accessToken || session?.user?.accessToken;
+      console.log('Token being sent:', token ? 'Present' : 'Missing');
       
       if (!token) {
         throw new Error('Not authenticated');
@@ -48,7 +96,7 @@ export default function DoctorOnboardingPage() {
 
       console.log('Creating profile with data:', requestData);
 
-      const response = await fetch('http://localhost:4000/api/doctors/profile', {
+      const response = await fetch(`${API_BASE}/doctors/profile`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -61,6 +109,12 @@ export default function DoctorOnboardingPage() {
       console.log('Profile creation response:', data);
 
       if (!response.ok) {
+        // Handle "already exists" case gracefully
+        if (response.status === 400 && data.message === 'Doctor profile already exists') {
+          toast.info('You already have a doctor profile. Redirecting...');
+          router.push('/dashboard/documents');
+          return;
+        }
         if (data.errors) {
           const errorMessages = Object.values(data.errors).flat().join(', ');
           throw new Error(errorMessages);
@@ -78,7 +132,7 @@ export default function DoctorOnboardingPage() {
     }
   };
 
-  if (status === 'loading') {
+  if (status === 'loading' || checkingProfile) {
     return (
       <div className="flex justify-center items-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>

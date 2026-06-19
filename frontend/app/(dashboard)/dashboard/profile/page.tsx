@@ -1,4 +1,3 @@
-// frontend/app/(dashboard)/dashboard/profile/page.tsx
 'use client';
 
 import { useSession } from 'next-auth/react';
@@ -14,11 +13,31 @@ import {
   Clock, 
   Calendar,
   Phone,
-  MapPin,
   BookOpen,
-  Star
+  Star,
+  Image as ImageIcon,
+  FileText,
+  Video,
+  Download,
+  Trash2,
+  Plus,
+  Heart,
+  Pill,
+  AlertCircle,
+  MapPin,
+  Award,
+  Briefcase
 } from 'lucide-react';
 import { toast } from 'sonner';
+
+// ==================== TYPES ====================
+interface MediaFile {
+  id: string;
+  fileUrl: string;
+  fileName: string;
+  mimeType: string;
+  uploadedAt: string;
+}
 
 interface DoctorProfile {
   id: string;
@@ -34,6 +53,10 @@ interface DoctorProfile {
   createdAt: string;
   averageRating: number | null;
   totalRatings: number;
+  experience?: number;
+  education?: string[];
+  languages?: string[];
+  clinicAddress?: string;
 }
 
 interface PatientProfile {
@@ -45,21 +68,25 @@ interface PatientProfile {
   emergencyContact: string | null;
   allergies: string[];
   currentMedications: string[];
+  ehrDocuments: MediaFile[];
+  emergencyContactName?: string;
+  emergencyContactRelation?: string;
+  address?: string;
+  height?: number;
+  weight?: number;
 }
 
+// ==================== COMPONENT ====================
 export default function ProfilePage() {
-  const { data: session, status, update } = useSession();
+  const { data: session, status } = useSession();
   const router = useRouter();
   const [doctorProfile, setDoctorProfile] = useState<DoctorProfile | null>(null);
   const [patientProfile, setPatientProfile] = useState<PatientProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editForm, setEditForm] = useState({
-    name: '',
-    specialty: '',
-    bio: '',
-    consultationFee: '',
-  });
+  const [activeTab, setActiveTab] = useState<'details' | 'media'>('details');
+
+  // ✅ CORRECT: Use port 4000 directly
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
 
   useEffect(() => {
     if (status === 'loading') return;
@@ -77,114 +104,93 @@ export default function ProfilePage() {
       setLoading(true);
       
       if (session?.user?.role === 'DOCTOR') {
-        // Fetch doctor profile
-        const response = await fetch(`http://localhost:4000/api/doctors/user/${session?.user?.id}`);
+        // ✅ CORRECT: Using port 4000
+        const response = await fetch(`${API_BASE}/doctors/user/${session?.user?.id}`, {
+          headers: {
+            'Authorization': `Bearer ${session?.accessToken}`,
+          }
+        });
         
         if (response.ok) {
           const data = await response.json();
           setDoctorProfile(data);
-          // Initialize edit form with current values
-          if (data) {
-            setEditForm({
-              name: data.name || '',
-              specialty: data.specialty || '',
-              bio: data.bio || '',
-              consultationFee: data.consultationFee?.toString() || '',
-            });
-          }
         } else if (response.status === 404) {
           setDoctorProfile(null);
+        } else {
+          toast.error('Failed to fetch doctor profile');
         }
       } else if (session?.user?.role === 'PATIENT') {
-        // Fetch patient profile
-        const response = await fetch(`http://localhost:4000/api/patients/user/${session?.user?.id}`);
+        // ✅ CORRECT: Using port 4000
+        const response = await fetch(`${API_BASE}/patients/user/${session?.user?.id}`, {
+          headers: {
+            'Authorization': `Bearer ${session?.accessToken}`,
+          }
+        });
         
         if (response.ok) {
           const data = await response.json();
           setPatientProfile(data);
         } else if (response.status === 404) {
           setPatientProfile(null);
+        } else {
+          toast.error('Failed to fetch patient profile');
         }
       }
     } catch (error) {
       console.error('Error fetching profile:', error);
+      toast.error('Failed to load profile');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleUpdateProfile = async (e: React.FormEvent) => {
-  e.preventDefault();
-  
-  try {
-    // Create payload with only non-empty fields
-    const payload: any = {};
+  const deleteMedia = async (mediaId: string) => {
+    if (!confirm('Are you sure you want to delete this file?')) return;
     
-    if (editForm.name && editForm.name !== doctorProfile?.name) {
-      payload.name = editForm.name;
-    }
-    if (editForm.specialty && editForm.specialty !== doctorProfile?.specialty) {
-      payload.specialty = editForm.specialty;
-    }
-    if (editForm.bio !== doctorProfile?.bio) {
-      payload.bio = editForm.bio;
-    }
-    if (editForm.consultationFee && parseInt(editForm.consultationFee) !== doctorProfile?.consultationFee) {
-      payload.consultationFee = parseInt(editForm.consultationFee);
-    }
-    
-    console.log('Sending payload:', payload);
-    
-    const response = await fetch(`http://localhost:4000/api/doctors/${doctorProfile?.id}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session?.accessToken}`,
-      },
-      body: JSON.stringify(payload),
-    });
+    try {
+      // ✅ CORRECT: Using port 4000
+      const response = await fetch(`${API_BASE}/patients/media/${mediaId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${session?.accessToken}`,
+        }
+      });
 
-    const data = await response.json();
-    console.log('Response:', data);
-
-    if (!response.ok) {
-      throw new Error(data.message || data.errors?.message || 'Failed to update profile');
-    }
-
-    setDoctorProfile(data);
-    setIsEditing(false);
-    toast.success('Profile updated successfully!');
-    await update({ name: editForm.name });
-  } catch (error: any) {
-    console.error('Update error:', error);
-    toast.error(error.message || 'Failed to update profile');
-  }
-};
-
-  const getVerificationStatusIcon = (status: string) => {
-    switch (status) {
-      case 'VERIFIED':
-        return <CheckCircle className="h-6 w-6 text-green-600" />;
-      case 'PENDING_VERIFICATION':
-        return <Clock className="h-6 w-6 text-yellow-600" />;
-      case 'REJECTED':
-        return <XCircle className="h-6 w-6 text-red-600" />;
-      default:
-        return <Clock className="h-6 w-6 text-gray-400" />;
+      if (response.ok) {
+        toast.success('File deleted successfully');
+        fetchProfile();
+      } else {
+        toast.error('Failed to delete file');
+      }
+    } catch (error) {
+      console.error('Delete error:', error);
+      toast.error('Failed to delete file');
     }
   };
 
-  const getVerificationStatusText = (status: string) => {
-    switch (status) {
-      case 'VERIFIED':
-        return 'Verified';
-      case 'PENDING_VERIFICATION':
-        return 'Under Review';
-      case 'REJECTED':
-        return 'Rejected';
-      default:
-        return 'Documents Pending';
+  const getMediaType = (mimeType: string): 'image' | 'document' | 'video' | 'other' => {
+    if (mimeType.startsWith('image/')) return 'image';
+    if (mimeType.startsWith('video/')) return 'video';
+    if (mimeType.includes('pdf') || mimeType.includes('document') || mimeType.includes('word') || mimeType.includes('excel')) return 'document';
+    return 'other';
+  };
+
+  const getMediaIcon = (mimeType: string) => {
+    const type = getMediaType(mimeType);
+    switch (type) {
+      case 'image': return <ImageIcon className="h-8 w-8 text-blue-500" />;
+      case 'video': return <Video className="h-8 w-8 text-red-500" />;
+      case 'document': return <FileText className="h-8 w-8 text-orange-500" />;
+      default: return <FileText className="h-8 w-8 text-gray-500" />;
     }
+  };
+
+  const formatDate = (date: string) => {
+    return new Date(date).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
   };
 
   if (status === 'loading' || loading) {
@@ -199,102 +205,262 @@ export default function ProfilePage() {
     return null;
   }
 
-  // ==================== PATIENT PROFILE VIEW ====================
+  // ==================== PATIENT PROFILE ====================
   if (session?.user?.role === 'PATIENT') {
     return (
-      <div className="max-w-3xl mx-auto p-6">
+      <div className="max-w-4xl mx-auto p-6">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold text-gray-900">My Profile</h1>
           <button
             onClick={() => router.push('/dashboard/profile/edit')}
-            className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
           >
+            <User className="h-4 w-4" />
             Edit Profile
           </button>
         </div>
-        
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-white">
-            <div className="flex items-center gap-4">
-              <div className="bg-blue-100 p-4 rounded-full">
-                <User className="h-8 w-8 text-blue-600" />
-              </div>
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900">{patientProfile?.name || session?.user?.name}</h2>
-                <p className="text-gray-500 text-sm">{session?.user?.email}</p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="p-6 space-y-4">
-            <div className="flex items-center gap-3 py-2 border-b border-gray-100">
-              <Mail className="h-5 w-5 text-gray-400" />
-              <div>
-                <p className="text-sm text-gray-500">Email</p>
-                <p className="font-medium text-gray-900">{session?.user?.email}</p>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-3 py-2 border-b border-gray-100">
-              <User className="h-5 w-5 text-gray-400" />
-              <div>
-                <p className="text-sm text-gray-500">Role</p>
-                <p className="font-medium text-gray-900">Patient</p>
-              </div>
-            </div>
-            
-            {patientProfile?.dateOfBirth && (
-              <div className="flex items-center gap-3 py-2 border-b border-gray-100">
-                <Calendar className="h-5 w-5 text-gray-400" />
+
+        <div className="flex gap-2 mb-6 border-b border-gray-200">
+          <button
+            onClick={() => setActiveTab('details')}
+            className={`px-4 py-2 text-sm font-medium transition-colors ${
+              activeTab === 'details'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <User className="h-4 w-4 inline mr-2" />
+            Details
+          </button>
+          <button
+            onClick={() => setActiveTab('media')}
+            className={`px-4 py-2 text-sm font-medium transition-colors ${
+              activeTab === 'media'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <ImageIcon className="h-4 w-4 inline mr-2" />
+            Media & Documents
+            {patientProfile?.ehrDocuments && patientProfile.ehrDocuments.length > 0 && (
+              <span className="ml-2 bg-blue-100 text-blue-600 text-xs px-2 py-0.5 rounded-full">
+                {patientProfile.ehrDocuments.length}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {activeTab === 'details' ? (
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-white">
+              <div className="flex items-center gap-4">
+                <div className="bg-blue-100 p-4 rounded-full">
+                  <User className="h-8 w-8 text-blue-600" />
+                </div>
                 <div>
-                  <p className="text-sm text-gray-500">Date of Birth</p>
-                  <p className="font-medium text-gray-900">{new Date(patientProfile.dateOfBirth).toLocaleDateString()}</p>
+                  <h2 className="text-xl font-semibold text-gray-900">{patientProfile?.name || session?.user?.name}</h2>
+                  <p className="text-gray-500 text-sm">{session?.user?.email}</p>
                 </div>
               </div>
-            )}
+            </div>
             
-            {patientProfile?.bloodGroup && (
-              <div className="flex items-center gap-3 py-2 border-b border-gray-100">
-                <BookOpen className="h-5 w-5 text-gray-400" />
-                <div>
-                  <p className="text-sm text-gray-500">Blood Group</p>
-                  <p className="font-medium text-gray-900">{patientProfile.bloodGroup}</p>
-                </div>
-              </div>
-            )}
-            
-            {patientProfile?.emergencyContact && (
-              <div className="flex items-center gap-3 py-2 border-b border-gray-100">
-                <Phone className="h-5 w-5 text-gray-400" />
-                <div>
-                  <p className="text-sm text-gray-500">Emergency Contact</p>
-                  <p className="font-medium text-gray-900">{patientProfile.emergencyContact}</p>
-                </div>
-              </div>
-            )}
-            
-            {patientProfile?.allergies && patientProfile.allergies.length > 0 && (
-              <div className="flex items-start gap-3 py-2">
-                <XCircle className="h-5 w-5 text-red-400 mt-0.5" />
-                <div>
-                  <p className="text-sm text-gray-500">Allergies</p>
-                  <div className="flex flex-wrap gap-2 mt-1">
-                    {patientProfile.allergies.map((allergy, idx) => (
-                      <span key={idx} className="px-2 py-1 bg-red-50 text-red-700 rounded-full text-xs">
-                        {allergy}
-                      </span>
-                    ))}
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="flex items-center gap-3 py-2 border-b border-gray-100">
+                  <Mail className="h-5 w-5 text-gray-400" />
+                  <div>
+                    <p className="text-sm text-gray-500">Email</p>
+                    <p className="font-medium text-gray-900">{session?.user?.email}</p>
                   </div>
                 </div>
+                
+                <div className="flex items-center gap-3 py-2 border-b border-gray-100">
+                  <User className="h-5 w-5 text-gray-400" />
+                  <div>
+                    <p className="text-sm text-gray-500">Role</p>
+                    <p className="font-medium text-gray-900">Patient</p>
+                  </div>
+                </div>
+                
+                {patientProfile?.dateOfBirth && (
+                  <div className="flex items-center gap-3 py-2 border-b border-gray-100">
+                    <Calendar className="h-5 w-5 text-gray-400" />
+                    <div>
+                      <p className="text-sm text-gray-500">Date of Birth</p>
+                      <p className="font-medium text-gray-900">{formatDate(patientProfile.dateOfBirth)}</p>
+                    </div>
+                  </div>
+                )}
+                
+                {patientProfile?.bloodGroup && (
+                  <div className="flex items-center gap-3 py-2 border-b border-gray-100">
+                    <Heart className="h-5 w-5 text-red-400" />
+                    <div>
+                      <p className="text-sm text-gray-500">Blood Group</p>
+                      <p className="font-medium text-gray-900">{patientProfile.bloodGroup}</p>
+                    </div>
+                  </div>
+                )}
+                
+                {patientProfile?.height && (
+                  <div className="flex items-center gap-3 py-2 border-b border-gray-100">
+                    <User className="h-5 w-5 text-gray-400" />
+                    <div>
+                      <p className="text-sm text-gray-500">Height</p>
+                      <p className="font-medium text-gray-900">{patientProfile.height} cm</p>
+                    </div>
+                  </div>
+                )}
+                
+                {patientProfile?.weight && (
+                  <div className="flex items-center gap-3 py-2 border-b border-gray-100">
+                    <User className="h-5 w-5 text-gray-400" />
+                    <div>
+                      <p className="text-sm text-gray-500">Weight</p>
+                      <p className="font-medium text-gray-900">{patientProfile.weight} kg</p>
+                    </div>
+                  </div>
+                )}
+                
+                {patientProfile?.emergencyContact && (
+                  <div className="flex items-center gap-3 py-2 border-b border-gray-100">
+                    <Phone className="h-5 w-5 text-gray-400" />
+                    <div>
+                      <p className="text-sm text-gray-500">Emergency Contact</p>
+                      <p className="font-medium text-gray-900">{patientProfile.emergencyContact}</p>
+                      {patientProfile.emergencyContactName && (
+                        <p className="text-sm text-gray-500">{patientProfile.emergencyContactName}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
+                {patientProfile?.address && (
+                  <div className="flex items-start gap-3 py-2 border-b border-gray-100">
+                    <MapPin className="h-5 w-5 text-gray-400 mt-0.5" />
+                    <div>
+                      <p className="text-sm text-gray-500">Address</p>
+                      <p className="font-medium text-gray-900">{patientProfile.address}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {patientProfile?.allergies && patientProfile.allergies.length > 0 && (
+                <div className="flex items-start gap-3 py-2 border-t border-gray-200 pt-4">
+                  <AlertCircle className="h-5 w-5 text-red-400 mt-0.5" />
+                  <div>
+                    <p className="text-sm text-gray-500">Allergies</p>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {patientProfile.allergies.map((allergy, idx) => (
+                        <span key={idx} className="px-2 py-1 bg-red-50 text-red-700 rounded-full text-xs">
+                          {allergy}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {patientProfile?.currentMedications && patientProfile.currentMedications.length > 0 && (
+                <div className="flex items-start gap-3 py-2 border-t border-gray-200 pt-4">
+                  <Pill className="h-5 w-5 text-blue-400 mt-0.5" />
+                  <div>
+                    <p className="text-sm text-gray-500">Current Medications</p>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {patientProfile.currentMedications.map((med, idx) => (
+                        <span key={idx} className="px-2 py-1 bg-blue-50 text-blue-700 rounded-full text-xs">
+                          {med}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">Documents & Media</h2>
+              <button
+                onClick={() => router.push('/dashboard/profile/doctor-edit')}
+                className="text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center gap-1"
+              >
+                <Plus className="h-4 w-4" />
+                Upload New
+              </button>
+            </div>
+            
+            {!patientProfile?.ehrDocuments || patientProfile.ehrDocuments.length === 0 ? (
+              <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-lg">
+                <FileText className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                <h3 className="text-gray-600 font-medium mb-1">No documents uploaded</h3>
+                <p className="text-gray-400 text-sm">Upload your medical documents, reports, and images</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {patientProfile.ehrDocuments.map((media) => {
+                  const mediaType = getMediaType(media.mimeType);
+                  return (
+                    <div key={media.id} className="relative group">
+                      <div className="border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
+                        {mediaType === 'image' ? (
+                          <div className="relative h-40 bg-gray-100">
+                            <img
+                              src={`${API_BASE}${media.fileUrl}`}
+                              alt={media.fileName}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src = '/placeholder-image.png';
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          <div className="h-40 bg-gray-50 flex flex-col items-center justify-center p-4">
+                            {getMediaIcon(media.mimeType)}
+                            <span className="mt-2 text-xs text-gray-600 text-center truncate w-full">
+                              {media.fileName}
+                            </span>
+                            <span className="text-xs text-gray-400">
+                              {media.fileName.split('.').pop()?.toUpperCase()}
+                            </span>
+                          </div>
+                        )}
+                        <div className="p-2">
+                          <p className="text-xs text-gray-600 truncate">{media.fileName}</p>
+                          <p className="text-xs text-gray-400">{formatDate(media.uploadedAt)}</p>
+                        </div>
+                      </div>
+                      
+                      <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <a
+                          href={`${API_BASE}${media.fileUrl}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="bg-white p-1.5 rounded-full shadow-md hover:bg-gray-50"
+                        >
+                          <Download className="h-4 w-4 text-gray-600" />
+                        </a>
+                        <button
+                          onClick={() => deleteMedia(media.id)}
+                          className="bg-white p-1.5 rounded-full shadow-md hover:bg-red-50"
+                        >
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
-        </div>
+        )}
       </div>
     );
   }
 
-  // ==================== DOCTOR PROFILE VIEW ====================
+  // ==================== DOCTOR PROFILE ====================
   if (!doctorProfile) {
     return (
       <div className="max-w-2xl mx-auto p-6">
@@ -317,108 +483,33 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto p-6">
+    <div className="max-w-4xl mx-auto p-6">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Doctor Profile</h1>
-        {!isEditing && (
-          <button
-            onClick={() => setIsEditing(true)}
-            className="text-blue-600 hover:text-blue-700 text-sm font-medium"
-          >
-            Edit Profile
-          </button>
-        )}
+        <button
+          onClick={() => router.push('/dashboard/profile/doctor-edit')}
+          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+        >
+          <User className="h-4 w-4" />
+          Edit Profile
+        </button>
       </div>
-      
-      {isEditing ? (
-        // Edit Form
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-          <h2 className="text-lg font-semibold mb-4">Edit Profile</h2>
-          <form onSubmit={handleUpdateProfile} className="space-y-4">
+
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-white">
+          <div className="flex items-center gap-4">
+            <div className="bg-blue-100 p-4 rounded-full">
+              <Stethoscope className="h-8 w-8 text-blue-600" />
+            </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
-              <input
-                type="text"
-                value={editForm.name}
-                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Specialty</label>
-              <input
-                type="text"
-                value={editForm.specialty}
-                onChange={(e) => setEditForm({ ...editForm, specialty: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Bio</label>
-              <textarea
-                rows={4}
-                value={editForm.bio}
-                onChange={(e) => setEditForm({ ...editForm, bio: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Consultation Fee (₹)</label>
-              <input
-                type="number"
-                value={editForm.consultationFee}
-                onChange={(e) => setEditForm({ ...editForm, consultationFee: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              />
-            </div>
-            
-            <div className="flex gap-3 pt-4">
-              <button
-                type="submit"
-                className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                Save Changes
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsEditing(false);
-                  setEditForm({
-                    name: doctorProfile.name || '',
-                    specialty: doctorProfile.specialty || '',
-                    bio: doctorProfile.bio || '',
-                    consultationFee: doctorProfile.consultationFee?.toString() || '',
-                  });
-                }}
-                className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        </div>
-      ) : (
-        // View Mode
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-white">
-            <div className="flex items-center gap-4">
-              <div className="bg-blue-100 p-4 rounded-full">
-                <Stethoscope className="h-8 w-8 text-blue-600" />
-              </div>
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900">{doctorProfile.name}</h2>
-                <p className="text-blue-600 text-sm">{doctorProfile.specialty}</p>
-              </div>
+              <h2 className="text-xl font-semibold text-gray-900">{doctorProfile.name}</h2>
+              <p className="text-blue-600 text-sm">{doctorProfile.specialty}</p>
             </div>
           </div>
-          
-          <div className="p-6 space-y-4">
+        </div>
+        
+        <div className="p-6 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="flex items-center gap-3 py-2 border-b border-gray-100">
               <Mail className="h-5 w-5 text-gray-400" />
               <div>
@@ -438,39 +529,79 @@ export default function ProfilePage() {
             </div>
             
             <div className="flex items-center gap-3 py-2 border-b border-gray-100">
-              {getVerificationStatusIcon(doctorProfile.verificationStatus)}
+              {doctorProfile.verificationStatus === 'VERIFIED' && <CheckCircle className="h-5 w-5 text-green-600" />}
+              {doctorProfile.verificationStatus === 'PENDING_VERIFICATION' && <Clock className="h-5 w-5 text-yellow-600" />}
+              {doctorProfile.verificationStatus === 'REJECTED' && <XCircle className="h-5 w-5 text-red-600" />}
+              {doctorProfile.verificationStatus === 'PENDING_DOCUMENTS' && <Clock className="h-5 w-5 text-gray-400" />}
               <div>
                 <p className="text-sm text-gray-500">Verification Status</p>
                 <p className="font-medium text-gray-900">
-                  {getVerificationStatusText(doctorProfile.verificationStatus)}
+                  {doctorProfile.verificationStatus === 'VERIFIED' && 'Verified'}
+                  {doctorProfile.verificationStatus === 'PENDING_VERIFICATION' && 'Under Review'}
+                  {doctorProfile.verificationStatus === 'REJECTED' && 'Rejected'}
+                  {doctorProfile.verificationStatus === 'PENDING_DOCUMENTS' && 'Documents Pending'}
                 </p>
               </div>
             </div>
             
-            {doctorProfile.averageRating && (
+            {doctorProfile.experience && (
               <div className="flex items-center gap-3 py-2 border-b border-gray-100">
-                <Star className="h-5 w-5 text-yellow-400 fill-current" />
+                <Award className="h-5 w-5 text-gray-400" />
                 <div>
-                  <p className="text-sm text-gray-500">Rating</p>
-                  <p className="font-medium text-gray-900">
-                    {doctorProfile.averageRating.toFixed(1)} / 5 ({doctorProfile.totalRatings} reviews)
-                  </p>
+                  <p className="text-sm text-gray-500">Experience</p>
+                  <p className="font-medium text-gray-900">{doctorProfile.experience} years</p>
                 </div>
               </div>
             )}
             
-            {doctorProfile.bio && (
-              <div className="flex items-start gap-3 py-2">
-                <BookOpen className="h-5 w-5 text-gray-400 mt-0.5" />
+            {doctorProfile.clinicAddress && (
+              <div className="flex items-start gap-3 py-2 border-b border-gray-100">
+                <MapPin className="h-5 w-5 text-gray-400 mt-0.5" />
                 <div>
-                  <p className="text-sm text-gray-500">Bio</p>
-                  <p className="text-gray-700 mt-1">{doctorProfile.bio}</p>
+                  <p className="text-sm text-gray-500">Clinic Address</p>
+                  <p className="font-medium text-gray-900">{doctorProfile.clinicAddress}</p>
                 </div>
               </div>
             )}
           </div>
+
+          {doctorProfile.bio && (
+            <div className="flex items-start gap-3 py-2 border-t border-gray-200 pt-4">
+              <BookOpen className="h-5 w-5 text-gray-400 mt-0.5" />
+              <div>
+                <p className="text-sm text-gray-500">Bio</p>
+                <p className="text-gray-700 mt-1">{doctorProfile.bio}</p>
+              </div>
+            </div>
+          )}
+          
+          {doctorProfile.education && doctorProfile.education.length > 0 && (
+            <div className="flex items-start gap-3 py-2 border-t border-gray-200 pt-4">
+              <Briefcase className="h-5 w-5 text-gray-400 mt-0.5" />
+              <div>
+                <p className="text-sm text-gray-500">Education</p>
+                <ul className="list-disc list-inside mt-1 text-gray-700">
+                  {doctorProfile.education.map((edu, idx) => (
+                    <li key={idx}>{edu}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+          
+          {doctorProfile.averageRating && (
+            <div className="flex items-center gap-3 py-2 border-t border-gray-200 pt-4">
+              <Star className="h-5 w-5 text-yellow-400 fill-current" />
+              <div>
+                <p className="text-sm text-gray-500">Rating</p>
+                <p className="font-medium text-gray-900">
+                  {doctorProfile.averageRating.toFixed(1)} / 5 ({doctorProfile.totalRatings} reviews)
+                </p>
+              </div>
+            </div>
+          )}
         </div>
-      )}
+      </div>
       
       {doctorProfile.verificationStatus === 'PENDING_DOCUMENTS' && (
         <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -484,15 +615,7 @@ export default function ProfilePage() {
           >
             Upload Documents →
           </a>
-        </div>
-      )}
-      
-      {doctorProfile.verificationStatus === 'PENDING_VERIFICATION' && (
-        <div className="mt-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <h3 className="font-semibold text-yellow-800 mb-2">Under Review</h3>
-          <p className="text-yellow-700 text-sm">
-            Your documents are being reviewed by our team. This usually takes 1-2 business days.
-          </p>
+
         </div>
       )}
     </div>

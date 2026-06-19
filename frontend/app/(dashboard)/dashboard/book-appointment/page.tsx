@@ -6,6 +6,7 @@ import { useSession } from 'next-auth/react';
 import { format } from 'date-fns';
 import { CalendarIcon, Clock, Stethoscope, DollarSign, AlertCircle, Users } from 'lucide-react';
 import { toast } from 'sonner';
+import { BookingModal } from '@/components/booking/BookingModal';
 
 interface TimeSlot {
   startTime: string;
@@ -27,8 +28,14 @@ export default function BookAppointmentPage() {
   const [appointmentType, setAppointmentType] = useState<'ONLINE' | 'OFFLINE'>('ONLINE');
   const [loading, setLoading] = useState(false);
   const [queuePosition, setQueuePosition] = useState<number | null>(null);
-  const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+  const [availableSlots, setAvailableSlots] = useState<TimeSlot[]>([]);
   const [fetchingSlots, setFetchingSlots] = useState(false);
+  
+  // ✅ NEW: For modal and booking
+  const [modalOpen, setModalOpen] = useState(false);
+  const [bookingError, setBookingError] = useState<any>(null);
+  const [bookingInProgress, setBookingInProgress] = useState(false);
+  const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
 
   useEffect(() => {
     if (doctorId) {
@@ -64,14 +71,34 @@ export default function BookAppointmentPage() {
     try {
       const response = await fetch(`http://localhost:4000/api/availability/doctor/${doctorId}?date=${date}`);
       const slots: TimeSlot[] = await response.json();
-      const available = slots.filter((slot: TimeSlot) => slot.isAvailable).map((slot: TimeSlot) => slot.startTime);
-      setAvailableSlots(available);
+      setAvailableSlots(slots);
     } catch (error) {
       console.error('Error fetching available slots:', error);
     } finally {
       setFetchingSlots(false);
     }
   };
+
+  const handleSelectSlot = (slot: TimeSlot) => {
+  console.log('🖱️ Slot clicked:', slot);
+  
+  if (!slot.isAvailable) {
+    toast.warning('This slot is not available');
+    return;
+  }
+
+  // ✅ Use startTime as identifier if id is not available
+  const slotId = slot.id || slot.startTime;
+  
+  if (!slotId) {
+    toast.warning('Slot ID not available, please try another slot');
+    return;
+  }
+
+  setSelectedSlotId(slotId);
+  setTime(slot.startTime);
+  toast.success(`Selected: ${slot.startTime} - ${slot.endTime}`);
+};
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,15 +108,21 @@ export default function BookAppointmentPage() {
       return;
     }
 
+    if (!selectedSlotId) {
+      toast.error('Please select a valid time slot');
+      return;
+    }
+
     const appointmentDate = new Date(`${date}T${time}:00`);
     if (appointmentDate <= new Date()) {
       toast.error('Please select a future date and time');
       return;
     }
 
+    setBookingInProgress(true);
+
     try {
-      setLoading(true);
-      const response = await fetch('http://localhost:4000/api/bookings/request', {
+      const response = await fetch('http://localhost:4000/api/bookings/book-friendly', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -97,9 +130,8 @@ export default function BookAppointmentPage() {
         },
         body: JSON.stringify({
           doctorId: doctorId,
+          availabilityId: selectedSlotId,
           scheduledAt: appointmentDate.toISOString(),
-          notes: reason,
-          durationMinutes: 30,
           type: appointmentType,
         }),
       });
@@ -107,18 +139,58 @@ export default function BookAppointmentPage() {
       const data = await response.json();
 
       if (!response.ok) {
+        // ✅ Check if it's a structured error with alternatives
+        if (data.type && data.alternatives) {
+          setBookingError({
+            type: data.type,
+            message: data.message,
+            suggestion: data.suggestion || 'Please try a different time slot.',
+            slotInfo: data.slotInfo,
+            alternatives: data.alternatives,
+          });
+          setModalOpen(true);
+          setBookingInProgress(false);
+          return;
+        }
         throw new Error(data.message || 'Failed to book appointment');
       }
 
-      setQueuePosition(data.queuePosition);
-      toast.success(data.message || 'Appointment request sent!');
+      setQueuePosition(data.queueNumber);
+      toast.success(data.message || 'Appointment booked successfully!');
       setTimeout(() => router.push('/dashboard/appointments'), 2000);
     } catch (error: any) {
       console.error('Booking error:', error);
       toast.error(error.message || 'Failed to book appointment');
     } finally {
-      setLoading(false);
+      setBookingInProgress(false);
     }
+  };
+
+  const handleSelectAlternative = (slotId: string) => {
+    // ✅ Close modal and book the alternative slot
+    setModalOpen(false);
+    setBookingError(null);
+    setSelectedSlotId(slotId);
+    
+    // Find the slot to get its time
+    const allSlots = [...(bookingError?.alternatives?.sameDay || []), ...(bookingError?.alternatives?.nearbyDays || [])];
+    const slot = allSlots.find((s: any) => s.id === slotId);
+    if (slot) {
+      setTime(slot.startTime);
+      // Auto-submit after a short delay
+      setTimeout(() => {
+        const fakeEvent = new Event('submit') as any;
+        handleSubmit(fakeEvent);
+      }, 500);
+    }
+  };
+
+  const handleRetry = () => {
+    setModalOpen(false);
+    setBookingError(null);
+    setDate('');
+    setTime('');
+    setSelectedSlotId(null);
   };
 
   if (!doctor) {
@@ -180,17 +252,31 @@ export default function BookAppointmentPage() {
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
             </div>
           ) : (
-            <select
-              value={time}
-              onChange={(e) => setTime(e.target.value)}
-              className="w-full px-4 py-2 border rounded-lg"
-              required
-            >
-              <option value="">Select a time slot</option>
-              {availableSlots.map((slot: string) => (
-                <option key={slot} value={slot}>{slot}</option>
+            <div className="grid grid-cols-3 gap-2">
+              {availableSlots.map((slot: TimeSlot) => (
+                <button
+                  key={slot.id || slot.startTime}
+                  type="button"
+                  onClick={() => handleSelectSlot(slot)}
+                  disabled={!slot.isAvailable}
+                  className={`p-2 rounded-lg border text-sm transition-all ${
+                    selectedSlotId === (slot.id || slot.startTime)
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      : slot.isAvailable
+                      ? 'border-gray-200 hover:border-blue-300 hover:bg-blue-50 cursor-pointer'
+                      : 'border-gray-100 bg-gray-50 text-gray-400 cursor-not-allowed'
+                  }`}
+                >
+                  <div className="font-medium">{slot.startTime} - {slot.endTime}</div>
+                  {slot.isAvailable && (
+                    <div className="text-xs text-green-600 mt-1">Available</div>
+                  )}
+                  {!slot.isAvailable && (
+                    <div className="text-xs text-red-400 mt-1">Full</div>
+                  )}
+                </button>
               ))}
-            </select>
+            </div>
           )}
           {availableSlots.length === 0 && !fetchingSlots && date && (
             <p className="text-sm text-red-500 mt-1">No available slots for this date</p>
@@ -235,12 +321,24 @@ export default function BookAppointmentPage() {
 
         <button
           type="submit"
-          disabled={loading}
+          disabled={bookingInProgress || !selectedSlotId}
           className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50"
         >
-          {loading ? 'Requesting...' : 'Request Appointment'}
+          {bookingInProgress ? 'Booking...' : 'Book Appointment'}
         </button>
       </form>
+
+      {/* ✅ Booking Modal */}
+      <BookingModal
+        isOpen={modalOpen}
+        onClose={() => {
+          setModalOpen(false);
+          setBookingError(null);
+        }}
+        error={bookingError}
+        onSelectAlternative={handleSelectAlternative}
+        onRetry={handleRetry}
+      />
     </div>
   );
 }
