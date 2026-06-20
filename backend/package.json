@@ -13,7 +13,7 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
-    "start:prod": "node dist/main.js",
+    "start:prod": "node dist/src/main.js",
     "postinstall": "prisma generate"
   },
   "dependencies": {
