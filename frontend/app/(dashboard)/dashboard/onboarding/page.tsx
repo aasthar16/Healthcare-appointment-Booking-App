@@ -36,7 +36,7 @@ export default function DoctorOnboardingPage() {
 
       try {
         // ✅ Get token from correct location
-        const token = session?.accessToken || session?.user?.accessToken;
+        const token = session?.accessToken ;
         
         if (!token) {
           console.error('No token found');
@@ -80,7 +80,7 @@ export default function DoctorOnboardingPage() {
 
     try {
       // ✅ Get token from correct location
-      const token = session?.accessToken || session?.user?.accessToken;
+      const token = session?.accessToken ;
       console.log('Token being sent:', token ? 'Present' : 'Missing');
       
       if (!token) {

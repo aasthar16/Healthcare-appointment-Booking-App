@@ -56,7 +56,7 @@ export default function DocumentsPage() {
   const fetchDoctorProfile = async () => {
     try {
       setFetchingDoctor(true);
-      const token = session?.accessToken || session?.user?.accessToken;
+      const token = session?.accessToken ;
       
       const response = await fetch(`${API_BASE}/doctors/user/${session?.user?.id}`, {
         headers: {
@@ -135,7 +135,7 @@ export default function DocumentsPage() {
   setUploading(true);
 
   try {
-    const token = session?.accessToken || session?.user?.accessToken;
+    const token = session?.accessToken ;
     
     if (!token) {
       throw new Error('Not authenticated');
@@ -206,7 +206,7 @@ export default function DocumentsPage() {
     if (!confirm(`Are you sure you want to delete your ${type} document?`)) return;
 
     try {
-      const token = session?.accessToken || session?.user?.accessToken;
+      const token = session?.accessToken ;
       
       const response = await fetch(`${API_BASE}/doctors/${doctorProfile?.id}/documents/${type}`, {
         method: 'DELETE',
