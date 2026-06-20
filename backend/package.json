@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+   
     "build": "nest build",
     "start": "node dist/src/main.js",
     "start:dev": "nodemon dist/src/main.js",
