@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",
-    "@health/schemas": "*",
+    
     "@hookform/resolvers": "^3.10.0",
     "@phosphor-icons/react": "^2.1.10",
     "@radix-ui/react-label": "^2.1.8",
