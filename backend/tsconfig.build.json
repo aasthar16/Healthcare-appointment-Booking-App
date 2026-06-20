@@ -18,8 +18,8 @@
     "forceConsistentCasingInFileNames": true,
     "noFallthroughCasesInSwitch": true,
     "paths": {                            
-      "@health/schemas": ["../packages/schemas/src/index.ts"],
-      "@health/schemas/*": ["../packages/schemas/src/*"]
+      "@health/schemas": ["../packages/schemas/dist/index.js"],
+"@health/schemas/*": ["../packages/schemas/dist/*"]
     }
   },
   "include": ["src/**/*"],
